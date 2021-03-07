@@ -50,9 +50,25 @@ mod lendingpool {
         amount: Balance,
     }
 
+    // * @dev Emitted on setUserUseReserveAsCollateral()
+    // * @param reserve The address of the underlying asset of the reserve
+    // * @param user The address of the user enabling the usage as collateral
+    #[ink(event)]
+    pub struct ReserveUsedAsCollateralDisabled {
+        reserve: AccountId,
+        user: AccountId,
+    }
+
     #[ink(storage)]
     pub struct Lendingpool {
         reserves: StorageHashMap<AccountId, ReserveData>,
+
+        users_config: StorageHashMap<AccountId, UserReserveData>,
+
+        // the list of the available reserves, structured as a mapping for gas savings reasons
+        reserves_list: StorageHashMap<u128, AccountId>,
+
+        reserves_count: u128,
     }
 
     impl Lendingpool {
@@ -60,6 +76,9 @@ mod lendingpool {
         pub fn new() -> Self {
             Self {
                 reserves: StorageHashMap::new(),
+                users_config: StorageHashMap::new(),
+                reserves_list: StorageHashMap::new(),
+                reserves_count: 0,
             }
         }
 
@@ -87,6 +106,7 @@ mod lendingpool {
 
             update_state(reserve);
             update_interest_rates(reserve, asset, atoken, amount, 0);
+
             let sender = self.env().caller();
 
             let mut asset_contract: ERC20 = FromAccountId::from_account_id(asset);
@@ -120,8 +140,56 @@ mod lendingpool {
         /// *   different wallet
         /// * @return The final amount withdrawn
         #[ink(message)]
-        pub fn withdraw(&self, _asset: AccountId, _amount: Balance, _to: AccountId) -> Balance {
-            unimplemented!()
+        pub fn withdraw(&mut self, asset: AccountId, amount: Balance, to: AccountId) -> Balance {
+            let sender = self.env().caller();
+
+            let reserve = self.reserves.get(&asset).expect("asset does not exist");
+
+            let atoken = reserve.atoken_address;
+            let mut atoken_contract: AToken = FromAccountId::from_account_id(atoken);
+            let user_balance = atoken_contract.balance_of(sender);
+
+            let amount_to_withdraw = amount;
+            let user_config = self
+                .users_config
+                .get_mut(&sender)
+                .expect("user config does not exist");
+            validate_withdraw(
+                asset,
+                sender,
+                amount_to_withdraw,
+                user_balance,
+                &self.reserves,
+                user_config,
+                &self.reserves_list,
+                self.reserves_count,
+                Default::default(),
+            );
+
+            let reserve = self.reserves.get_mut(&asset).unwrap();
+            update_state(reserve);
+            update_interest_rates(reserve, asset, atoken, 0, amount_to_withdraw);
+
+            if amount_to_withdraw == user_balance {
+                user_config.use_as_collateral = false;
+                self.env().emit_event(ReserveUsedAsCollateralDisabled {
+                    reserve: asset,
+                    user: sender,
+                });
+            }
+            // TODO
+            atoken_contract
+                .burn(sender, amount_to_withdraw)
+                .expect("aToken burn failed");
+
+            self.env().emit_event(Withdraw {
+                reserve: asset,
+                user: sender,
+                to,
+                amount: amount_to_withdraw,
+            });
+
+            amount_to_withdraw
         }
     }
 }

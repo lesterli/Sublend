@@ -6,6 +6,25 @@ use ink_storage::traits::{PackedLayout, SpreadLayout};
 
 pub use errors::*;
 
+#[derive(Debug, PartialEq, Eq, Clone, scale::Encode, scale::Decode, SpreadLayout, PackedLayout)]
+#[cfg_attr(
+    feature = "std",
+    derive(scale_info::TypeInfo, ink_storage::traits::StorageLayout)
+)]
+pub struct UserReserveData {
+    //principal amount borrowed by the user.
+    pub principal_borrow_balance: u128,
+    //cumulated variable borrow index for the user. Expressed in ray
+    pub last_variable_borrow_cumulative_index: u128,
+    //origination fee cumulated by the user
+    pub origination_fee: u128,
+    // stable borrow rate at which the user has borrowed. Expressed in ray
+    pub stable_borrow_rate: u128,
+    pub last_update_timestamp: u64,
+    //defines if a specific deposit should or not be used as a collateral in borrows
+    pub use_as_collateral: bool,
+}
+
 /// refer to the whitepaper, section 1.1 basic concepts for a formal description of these properties.
 #[derive(Debug, PartialEq, Eq, Clone, scale::Encode, scale::Decode, SpreadLayout, PackedLayout)]
 #[cfg_attr(
