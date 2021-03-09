@@ -50,6 +50,50 @@ mod lendingpool {
         amount: Balance,
     }
 
+    /**
+     * @dev Emitted on borrow() and flashLoan() when debt needs to be opened
+     * @param reserve The address of the underlying asset being borrowed
+     * @param user The address of the user initiating the borrow(), receiving the funds on borrow() or just
+     * initiator of the transaction on flashLoan()
+     * @param onBehalfOf The address that will be getting the debt
+     * @param amount The amount borrowed out
+     * @param borrowRateMode The rate mode: 1 for Stable, 2 for Variable
+     * @param borrowRate The numeric rate at which the user has borrowed
+     * @param referral The referral code used
+     **/
+    #[ink(event)]
+    pub struct Borrow {
+        #[ink(topic)]
+        reserve: AccountId,
+        #[ink(topic)]
+        user: AccountId,
+        #[ink(topic)]
+        on_behalf_of: AccountId,
+        #[ink(topic)]
+        amount: Balance,
+        #[ink(topic)]
+        borrow_rate: u128,
+    }
+
+    /**
+     * @dev Emitted on repay()
+     * @param reserve The address of the underlying asset of the reserve
+     * @param user The beneficiary of the repayment, getting his debt reduced
+     * @param repayer The address of the user initiating the repay(), providing the funds
+     * @param amount The amount repaid
+     **/
+    #[ink(event)]
+    pub struct Repay {
+        #[ink(topic)]
+        reserve: AccountId,
+        #[ink(topic)]
+        user: AccountId,
+        #[ink(topic)]
+        repayer: AccountId,
+        #[ink(topic)]
+        amount: Balance,
+    }
+
     // * @dev Emitted on setUserUseReserveAsCollateral()
     // * @param reserve The address of the underlying asset of the reserve
     // * @param user The address of the user enabling the usage as collateral
@@ -154,7 +198,7 @@ mod lendingpool {
                 .users_config
                 .get_mut(&sender)
                 .expect("user config does not exist");
-            validate_withdraw(
+            validate_withdraw (
                 asset,
                 sender,
                 amount_to_withdraw,
@@ -191,5 +235,60 @@ mod lendingpool {
 
             amount_to_withdraw
         }
+
+
+        /**
+         * @dev Allows users to borrow a specific `amount` of the reserve underlying asset, provided that the borrower
+         * already deposited enough collateral, or he was given enough allowance by a credit delegator on the
+         * corresponding debt token (StableDebtToken or VariableDebtToken)
+         * - E.g. User borrows 100 USDC passing as `onBehalfOf` his own address, receiving the 100 USDC in his wallet
+         *   and 100 stable/variable debt tokens, depending on the `interestRateMode`
+         * @param asset The address of the underlying asset to borrow
+         * @param amount The amount to be borrowed
+         * @param interestRateMode The interest rate mode at which the user wants to borrow: 1 for Stable, 2 for Variable
+         * @param referralCode Code used to register the integrator originating the operation, for potential rewards.
+         *   0 if the action is executed directly by the user, without any middle-man
+         * @param onBehalfOf Address of the user who will receive the debt. Should be the address of the borrower itself
+         * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator
+         * if he has been given credit delegation allowance
+         **/
+        #[ink(message)]
+        pub fun borrow(&mut self, asset: AccountId, amount: Balance, on_behalf_of: AccountId)  {
+            let reserve = self.reserves.get(&asset).expect("asset does not exist");
+            let user_config = self.user_config.get(&asset).expect("asset does not exist");
+            // TODO: oracle asset price * amount / decimal
+            let amount_in_dot: u128 = 1;
+            validate_borrow (
+                asset,
+                reserve,
+                on_behalf_of,
+                amount,
+                amount_in_dot,
+                MAX_STABLE_RATE_BORROW_SIZE_PERCENT,
+                &self.reserves,,
+                user_config,
+                &self.reserves_list,
+                self.reserves_count,
+            );
+
+            update_state(reserve);
+
+            let current_stable_rate: u128 = reserve.current_stable_borrow_rate;
+            // debt token mint
+
+            // TODO: atoken 
+            atoken_contract
+            .transfer(sender, amount)
+            .expect("aToken burn failed");
+
+            self.env().emit_event(Borrow {
+                reserve: asset,
+                user: sender,
+                on_behalf_of,
+                amount,
+                current_stable_rate,
+            });
+        }
+
     }
 }
