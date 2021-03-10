@@ -1,10 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use self::erc20::ERC20;
+pub use self::stoken::SToken;
 use ink_lang as ink;
 
 #[ink::contract]
-mod erc20 {
+mod stoken {
     use ink_prelude::string::String;
 
     #[cfg(not(feature = "ink-as-dependency"))]
@@ -25,7 +25,7 @@ mod erc20 {
     pub type Result<T> = core::result::Result<T, Error>;
 
     #[ink(storage)]
-    pub struct ERC20 {
+    pub struct SToken {
         /// Total token supply.
         total_supply: Lazy<Balance>,
         /// Mapping from owner to number of owned token.
@@ -83,7 +83,7 @@ mod erc20 {
         amount: Balance,
     }
 
-    impl ERC20 {
+    impl SToken {
         /// Creates a new ERC-20 contract with the specified initial supply.
         #[ink(constructor)]
         pub fn new(

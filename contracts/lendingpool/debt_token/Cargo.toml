@@ -1,5 +1,5 @@
 [package]
-name = "atoken"
+name = "debt_token"
 version = "0.1.0"
 authors = ["Patract Labs <tyler@patract.io>"]
 edition = "2018"
@@ -16,7 +16,7 @@ scale = { package = "parity-scale-codec", version = "2.0.1", default-features = 
 scale-info = { version = "0.6.0", default-features = false, features = ["derive"], optional = true }
 
 [lib]
-name = "atoken"
+name = "debt_token"
 path = "lib.rs"
 crate-type = [
     # Used for normal contract Wasm blobs.

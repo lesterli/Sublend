@@ -1,16 +1,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-mod logic;
 mod types;
 
 use ink_lang as ink;
 
 #[ink::contract]
 mod lendingpool {
-    use crate::logic::*;
     use crate::types::*;
-    use asset::ERC20;
-    use atoken::AToken;
+    use stoken::SToken;
 
     use ink_env::call::FromAccountId;
     use ink_storage::collections::HashMap as StorageHashMap;
@@ -20,11 +17,8 @@ mod lendingpool {
     /// * @param user The address initiating the deposit
     /// * @param onBehalfOf The beneficiary of the deposit, receiving the aTokens
     /// * @param amount The amount deposited
-    /// * @param referral The referral code used
     #[ink(event)]
     pub struct Deposit {
-        #[ink(topic)]
-        reserve: AccountId,
         #[ink(topic)]
         user: AccountId,
         #[ink(topic)]
@@ -40,8 +34,6 @@ mod lendingpool {
     /// * @param amount The amount to be withdrawn
     #[ink(event)]
     pub struct Withdraw {
-        #[ink(topic)]
-        reserve: AccountId,
         #[ink(topic)]
         user: AccountId,
         #[ink(topic)]
@@ -64,8 +56,6 @@ mod lendingpool {
     #[ink(event)]
     pub struct Borrow {
         #[ink(topic)]
-        reserve: AccountId,
-        #[ink(topic)]
         user: AccountId,
         #[ink(topic)]
         on_behalf_of: AccountId,
@@ -85,8 +75,6 @@ mod lendingpool {
     #[ink(event)]
     pub struct Repay {
         #[ink(topic)]
-        reserve: AccountId,
-        #[ink(topic)]
         user: AccountId,
         #[ink(topic)]
         repayer: AccountId,
@@ -94,35 +82,25 @@ mod lendingpool {
         amount: Balance,
     }
 
-    // * @dev Emitted on setUserUseReserveAsCollateral()
-    // * @param reserve The address of the underlying asset of the reserve
-    // * @param user The address of the user enabling the usage as collateral
-    #[ink(event)]
-    pub struct ReserveUsedAsCollateralDisabled {
-        reserve: AccountId,
-        user: AccountId,
-    }
-
     #[ink(storage)]
     pub struct Lendingpool {
-        reserves: StorageHashMap<AccountId, ReserveData>,
+        // DOT
+        reserve: ReserveData,
 
         users_config: StorageHashMap<AccountId, UserReserveData>,
-
-        // the list of the available reserves, structured as a mapping for gas savings reasons
-        reserves_list: StorageHashMap<u128, AccountId>,
-
-        reserves_count: u128,
     }
 
     impl Lendingpool {
         #[ink(constructor)]
-        pub fn new() -> Self {
+        pub fn new(stoken: AccountId, debt_token: AccountId) -> Self {
             Self {
-                reserves: StorageHashMap::new(),
+                reserve: ReserveData {
+                    stable_liquidity_rate: 5,
+                    stable_borrow_rate: 10,
+                    stoken_address: stoken,
+                    stable_debt_token_address: debt_token,
+                },
                 users_config: StorageHashMap::new(),
-                reserves_list: StorageHashMap::new(),
-                reserves_count: 0,
             }
         }
 
@@ -133,43 +111,32 @@ mod lendingpool {
         /// * @param onBehalfOf The address that will receive the aTokens, same as msg.sender if the user
         /// *   wants to receive them on his own wallet, or a different address if the beneficiary of aTokens
         /// *   is a different wallet
-        /// * @param referralCode Code used to register the integrator originating the operation, for potential rewards.
-        /// *   0 if the action is executed directly by the user, without any middle-man
-        #[ink(message)]
-        pub fn deposit(
-            &mut self,
-            asset: AccountId,
-            amount: Balance,
-            on_behalf_of: AccountId,
-            _referral_code: u16,
-        ) {
-            let reserve = self.reserves.get_mut(&asset).expect("asset does not exist");
-            validate_deposit(reserve, amount);
-
-            let atoken = reserve.atoken_address;
-
-            update_state(reserve);
-            update_interest_rates(reserve, asset, atoken, amount, 0);
-
+        #[ink(message, payable)]
+        pub fn deposit(&mut self, on_behalf_of: Option<AccountId>) {
             let sender = self.env().caller();
+            let mut receiver = sender;
+            if let Some(behalf) = on_behalf_of {
+                receiver = behalf;
+            }
+            let amount = self.env().transferred_balance();
+            assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
-            let mut asset_contract: ERC20 = FromAccountId::from_account_id(asset);
-            assert!(asset_contract.transfer_from(sender, atoken, amount).is_ok());
+            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
 
-            let mut atoken_contract: AToken = FromAccountId::from_account_id(atoken);
-            assert!(atoken_contract.mint(on_behalf_of, amount).is_ok());
+            let entry = self.users_config.entry(receiver);
+            let reserve_data = entry.or_insert(Default::default());
+            let user_balance = stoken.balance_of(receiver);
+            let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
+            let interest =
+                user_balance * interval as u128 * self.reserve.stable_liquidity_rate / 100;
+            reserve_data.cumulated_liquidity_interest += interest;
+            reserve_data.last_update_timestamp = Self::env().block_timestamp();
 
-            // TODO AToken 接口实现
-            // bool isFirstDeposit = IAToken(aToken).mint(onBehalfOf, amount, reserve.liquidityIndex);
-            // if (isFirstDeposit) {
-            //     _usersConfig[onBehalfOf].setUsingAsCollateral(reserve.id, true);
-            //     emit ReserveUsedAsCollateralEnabled(asset, onBehalfOf);
-            // }
+            assert!(stoken.mint(receiver, amount).is_ok());
 
             self.env().emit_event(Deposit {
-                reserve: asset,
                 user: sender,
-                on_behalf_of,
+                on_behalf_of: receiver,
                 amount,
             });
         }
@@ -184,58 +151,50 @@ mod lendingpool {
         /// *   different wallet
         /// * @return The final amount withdrawn
         #[ink(message)]
-        pub fn withdraw(&mut self, asset: AccountId, amount: Balance, to: AccountId) -> Balance {
+        pub fn withdraw(&mut self, amount: Balance, to: Option<AccountId>) {
+            assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
             let sender = self.env().caller();
+            let mut receiver = sender;
+            if let Some(behalf) = to {
+                receiver = behalf;
+            }
 
-            let reserve = self.reserves.get(&asset).expect("asset does not exist");
-
-            let atoken = reserve.atoken_address;
-            let mut atoken_contract: AToken = FromAccountId::from_account_id(atoken);
-            let user_balance = atoken_contract.balance_of(sender);
-
-            let amount_to_withdraw = amount;
-            let user_config = self
+            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let user_balance = stoken.balance_of(sender);
+            let reserve_data = self
                 .users_config
                 .get_mut(&sender)
                 .expect("user config does not exist");
-            validate_withdraw (
-                asset,
-                sender,
-                amount_to_withdraw,
-                user_balance,
-                &self.reserves,
-                user_config,
-                &self.reserves_list,
-                self.reserves_count,
-                Default::default(),
+            let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
+            let interest =
+                user_balance * interval as u128 * self.reserve.stable_liquidity_rate / 100;
+            reserve_data.cumulated_liquidity_interest += interest;
+            reserve_data.last_update_timestamp = Self::env().block_timestamp();
+
+            let user_balance = user_balance + reserve_data.cumulated_liquidity_interest;
+            assert!(
+                amount <= user_balance,
+                "{}",
+                VL_NOT_ENOUGH_AVAILABLE_USER_BALANCE
             );
 
-            let reserve = self.reserves.get_mut(&asset).unwrap();
-            update_state(reserve);
-            update_interest_rates(reserve, asset, atoken, 0, amount_to_withdraw);
-
-            if amount_to_withdraw == user_balance {
-                user_config.use_as_collateral = false;
-                self.env().emit_event(ReserveUsedAsCollateralDisabled {
-                    reserve: asset,
-                    user: sender,
-                });
+            if amount <= reserve_data.cumulated_liquidity_interest {
+                reserve_data.cumulated_liquidity_interest -= amount;
+            } else {
+                let rest = amount - reserve_data.cumulated_liquidity_interest;
+                reserve_data.cumulated_liquidity_interest = 0;
+                stoken.burn(sender, rest).expect("sToken burn failed");
             }
-            // TODO
-            atoken_contract
-                .burn(sender, amount_to_withdraw)
-                .expect("aToken burn failed");
+            self.env()
+                .transfer(receiver, amount)
+                .expect("transfer failed");
 
             self.env().emit_event(Withdraw {
-                reserve: asset,
                 user: sender,
-                to,
-                amount: amount_to_withdraw,
+                to: receiver,
+                amount,
             });
-
-            amount_to_withdraw
         }
-
 
         /**
          * @dev Allows users to borrow a specific `amount` of the reserve underlying asset, provided that the borrower
@@ -253,42 +212,44 @@ mod lendingpool {
          * if he has been given credit delegation allowance
          **/
         #[ink(message)]
-        pub fun borrow(&mut self, asset: AccountId, amount: Balance, on_behalf_of: AccountId)  {
-            let reserve = self.reserves.get(&asset).expect("asset does not exist");
-            let user_config = self.user_config.get(&asset).expect("asset does not exist");
+        pub fn borrow(&mut self, amount: Balance, on_behalf_of: AccountId) {
+            assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
+            let sender = self.env().caller();
+            let _user_config = self
+                .users_config
+                .get(&sender)
+                .expect("asset does not exist");
             // TODO: oracle asset price * amount / decimal
-            let amount_in_dot: u128 = 1;
-            validate_borrow (
-                asset,
-                reserve,
-                on_behalf_of,
-                amount,
-                amount_in_dot,
-                MAX_STABLE_RATE_BORROW_SIZE_PERCENT,
-                &self.reserves,,
-                user_config,
-                &self.reserves_list,
-                self.reserves_count,
-            );
+            let _amount_in_dot: u128 = 1;
+            // validate_borrow (
+            //     asset,
+            //     reserve,
+            //     on_behalf_of,
+            //     amount,
+            //     amount_in_dot,
+            //     MAX_STABLE_RATE_BORROW_SIZE_PERCENT,
+            //     &self.reserves,,
+            //     user_config,
+            //     &self.reserves_list,
+            //     self.reserves_count,
+            // );
 
-            update_state(reserve);
+            // update_state(reserve);
 
-            let current_stable_rate: u128 = reserve.current_stable_borrow_rate;
+            let current_stable_rate: u128 = self.reserve.stable_borrow_rate;
             // debt token mint
 
-            // TODO: atoken 
-            atoken_contract
-            .transfer(sender, amount)
-            .expect("aToken burn failed");
+            // TODO: atoken
+            self.env()
+                .transfer(sender, amount)
+                .expect("aToken burn failed");
 
             self.env().emit_event(Borrow {
-                reserve: asset,
                 user: sender,
                 on_behalf_of,
                 amount,
-                current_stable_rate,
+                borrow_rate: current_stable_rate,
             });
         }
-
     }
 }
