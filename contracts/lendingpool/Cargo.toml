@@ -17,6 +17,8 @@ scale-info = { version = "0.6.0", default-features = false, features = ["derive"
 
 asset = { version = "0.1.0", path = "asset", default-features = false, features = ["ink-as-dependency"] }
 atoken = { version = "0.1.0", path = "atoken", default-features = false, features = ["ink-as-dependency"] }
+incentivizederc20 = {version = "0.1.0", path = "incentivizederc20", default-features = false, features = ["ink-as-dependency"]}
+stabledebttoken = {version = "0.1.0", path = "stabledebttoken", default-features = false, features = ["ink-as-dependency"]}
 
 # Should be removed once bitvecto-rs/bitvec#105 is resolved
 funty = "=1.1.0"
@@ -49,4 +51,6 @@ overflow-checks = false
 members = [
     "asset",
     "atoken",
+    "incentivizederc20",
+    "stabledebttoken",
 ]

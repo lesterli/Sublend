@@ -1,12 +1,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use self::erc20::AToken;
+pub use self::atoken::AToken;
 use ink_lang as ink;
 
 #[ink::contract]
-mod erc20 {
-    use ink_prelude::string::String;
+mod atoken {
 
+    use incentivizederc20::Erc20;
+    #[cfg(not(feature = "ink-as-dependency"))]
+    use ink_env::call::FromAccountId;
+    use ink_prelude::string::String;
     #[cfg(not(feature = "ink-as-dependency"))]
     use ink_storage::{collections::HashMap as StorageHashMap, lazy::Lazy};
 
@@ -26,255 +29,176 @@ mod erc20 {
 
     #[ink(storage)]
     pub struct AToken {
-        /// Total token supply.
-        total_supply: Lazy<Balance>,
-        /// Mapping from owner to number of owned token.
-        balances: StorageHashMap<AccountId, Balance>,
-        /// Mapping of the token amount which an account is allowed to withdraw
-        /// from another account.
-        allowances: StorageHashMap<(AccountId, AccountId), Balance>,
-        /// Name of the token
-        name: Option<String>,
-        /// Symbol of the token
-        symbol: Option<String>,
-        /// Decimals of the token
-        decimals: Option<u8>,
-        /// The contract owner, provides basic authorization control
-        /// functions, this simplifies the implementation of "user permissions".
-        owner: AccountId,
-    }
-
-    /// Event emitted when a token transfer occurs.
-    #[ink(event)]
-    pub struct Transfer {
-        #[ink(topic)]
-        from: Option<AccountId>,
-        #[ink(topic)]
-        to: Option<AccountId>,
-        #[ink(topic)]
-        value: Balance,
-    }
-
-    /// Event emitted when an approval occurs that `spender` is allowed to withdraw
-    /// up to the amount of `value` tokens from `owner`.
-    #[ink(event)]
-    pub struct Approval {
-        #[ink(topic)]
-        caller: AccountId,
-        #[ink(topic)]
-        spender: AccountId,
-        #[ink(topic)]
-        value: Balance,
-    }
-
-    #[ink(event)]
-    pub struct Mint {
-        #[ink(topic)]
-        user: AccountId,
-        #[ink(topic)]
-        amount: Balance,
-    }
-
-    #[ink(event)]
-    pub struct Burn {
-        #[ink(topic)]
-        user: AccountId,
-        #[ink(topic)]
-        amount: Balance,
+        ///underlying asset
+        underasset: Lazy<Erc20>,
+        ///reserve asset address
+        reserve_asset_address: AccountId,
+        ///reserve asset
+        reserveasset: Lazy<Erc20>,
+        ///atoken instance
+        insatoken: Lazy<Erc20>,
     }
 
     impl AToken {
         /// Creates a new ERC-20 contract with the specified initial supply.
         #[ink(constructor)]
         pub fn new(
-            initial_supply: Balance,
+            underlying_asset_address: AccountId,
+            reserve_asset_address: AccountId,
+            incentivizede_contract_hash: Hash,
             name: Option<String>,
             symbol: Option<String>,
-            decimals: Option<u8>,
+            version: u32,
         ) -> Self {
-            let caller = Self::env().caller();
-            let mut balances = StorageHashMap::new();
-            balances.insert(caller, initial_supply);
-            let instance = Self {
-                total_supply: Lazy::new(initial_supply),
-                balances,
-                allowances: StorageHashMap::new(),
-                name,
-                symbol,
-                decimals,
-                owner: caller,
-            };
-            Self::env().emit_event(Transfer {
-                from: None,
-                to: Some(caller),
-                value: initial_supply,
-            });
-            instance
-        }
+            let unasset: Erc20 = FromAccountId::from_account_id(underlying_asset_address);
+            let reasset: Erc20 = FromAccountId::from_account_id(reserve_asset_address);
+            let salt = version.to_le_bytes();
+            let insatoken = Erc20::new(0, name, symbol, 18)
+                .endowment(0)
+                .code_hash(incentivizede_contract_hash)
+                .salt_bytes(salt)
+                .params()
+                .instantiate()
+                .expect("atoken instantiate failed");
 
-        /// Returns the token name.
-        #[ink(message, selector = "0x6b1bb951")]
-        pub fn token_name(&self) -> Option<String> {
-            self.name.clone()
-        }
-
-        /// Returns the token symbol.
-        #[ink(message, selector = "0xb42c3368")]
-        pub fn token_symbol(&self) -> Option<String> {
-            self.symbol.clone()
-        }
-
-        /// Returns the token decimals.
-        #[ink(message, selector = "0xc64b0eb2")]
-        pub fn token_decimals(&self) -> Option<u8> {
-            self.decimals
-        }
-
-        /// Returns the total token supply.
-        #[ink(message, selector = "0x143862ae")]
-        pub fn total_supply(&self) -> Balance {
-            *self.total_supply
-        }
-
-        /// Returns the account balance for the specified `owner`.
-        ///
-        /// Returns `0` if the account is non-existent.
-        #[ink(message, selector = "0xb7d968c9")]
-        pub fn balance_of(&self, owner: AccountId) -> Balance {
-            self.balances.get(&owner).copied().unwrap_or(0)
-        }
-
-        /// Transfers `value` amount of tokens from the caller's account to account `to`.
-        ///
-        /// On success a `Transfer` event is emitted.
-        ///
-        /// # Errors
-        ///
-        /// Returns `InsufficientBalance` error if there are not enough tokens on
-        /// the caller's account balance.
-        #[ink(message, selector = "0x10d455c2")]
-        pub fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
-            let from = self.env().caller();
-            self.transfer_from_to(from, to, value)
-        }
-
-        /// Returns the amount which `spender` is still allowed to withdraw from `owner`.
-        ///
-        /// Returns `0` if no allowance has been set `0`.
-        #[ink(message, selector = "0xc04aa300")]
-        pub fn allowance(&self, owner: AccountId, spender: AccountId) -> Balance {
-            self.allowances.get(&(owner, spender)).copied().unwrap_or(0)
-        }
-
-        /// Transfers `value` tokens on the behalf of `from` to the account `to`.
-        ///
-        /// This can be used to allow a contract to transfer tokens on ones behalf and/or
-        /// to charge fees in sub-currencies, for example.
-        ///
-        /// On success a `Transfer` event is emitted.
-        ///
-        /// # Errors
-        ///
-        /// Returns `InsufficientAllowance` error if there are not enough tokens allowed
-        /// for the caller to withdraw from `from`.
-        ///
-        /// Returns `InsufficientBalance` error if there are not enough tokens on
-        /// the the account balance of `from`.
-        #[ink(message, selector = "0xbb399017")]
-        pub fn transfer_from(
-            &mut self,
-            from: AccountId,
-            to: AccountId,
-            value: Balance,
-        ) -> Result<()> {
-            let caller = self.env().caller();
-            let allowance = self.allowance(from, caller);
-            if allowance < value {
-                return Err(Error::InsufficientAllowance);
+            Self {
+                underasset: unasset,
+                reserveasset: reasset,
+                insatoken: insatoken,
+                reserve_asset_address: reserve_asset_address,
             }
-            self.transfer_from_to(from, to, value)?;
-            self.allowances.insert((from, caller), allowance - value);
-            Ok(())
         }
 
-        /// Allows `spender` to withdraw from the caller's account multiple times, up to
-        /// the `value` amount.
-        ///
-        /// If this function is called again it overwrites the current allowance with `value`.
-        ///
-        /// An `Approval` event is emitted.
-        #[ink(message, selector = "0x4ce0e831")]
-        pub fn approve(&mut self, spender: AccountId, value: Balance) -> Result<()> {
-            let owner = self.env().caller();
-            self.allowances.insert((owner, spender), value);
-            self.env().emit_event(Approval {
-                caller: owner,
-                spender,
-                value,
-            });
-            Ok(())
-        }
-
-        /// Issue a new amount of tokens
-        /// these tokens are deposited into the owner address
+        // * @dev Burns aTokens from `user` and sends the equivalent amount of underlying to `receiverOfUnderlying`
+        // * - Only callable by the LendingPool, as extra state updates there need to be managed
+        // * @param user The owner of the aTokens, getting them burned
+        // * @param receiverOfUnderlying The address that will receive the underlying
+        // * @param amount The amount being burned
+        // * @param index The new liquidity index of the reserve
         #[ink(message)]
-        pub fn mint(&mut self, user: AccountId, amount: Balance) -> Result<()> {
-            assert!(amount > 0);
-
-            let user_balance = self.balance_of(user);
-            self.balances.insert(user, user_balance + amount);
-            *self.total_supply += amount;
-            self.env().emit_event(Mint { user, amount });
-            Ok(())
-        }
-
-        /// Redeem tokens.
-        /// These tokens are withdrawn from the owner address
-        /// if the balance must be enough to cover the redeem
-        /// or the call will fail.
-        #[ink(message)]
-        pub fn burn(&mut self, user: AccountId, amount: Balance) -> Result<()> {
-            if *self.total_supply < amount {
-                return Err(Error::InsufficientSupply);
-            }
-            let user_balance = self.balance_of(user);
-            if user_balance < amount {
-                return Err(Error::InsufficientBalance);
-            }
-
-            self.balances.insert(user, user_balance - amount);
-            *self.total_supply -= amount;
-            self.env().emit_event(Burn { user, amount });
-            Ok(())
-        }
-
-        /// Transfers `value` amount of tokens from the caller's account to account `to`.
-        ///
-        /// On success a `Transfer` event is emitted.
-        ///
-        /// # Errors
-        ///
-        /// Returns `InsufficientBalance` error if there are not enough tokens on
-        /// the caller's account balance.
-        fn transfer_from_to(
+        pub fn burn(
             &mut self,
-            from: AccountId,
-            to: AccountId,
-            value: Balance,
-        ) -> Result<()> {
-            let from_balance = self.balance_of(from);
-            if from_balance < value {
-                return Err(Error::InsufficientBalance);
+            user: AccountId,
+            receiverofunderlying: AccountId,
+            amount: Balance,
+            index: u32,
+        ) {
+            //TODO need only lendingpool
+            let amountscaled = amount / index.into();
+            assert_ne!(amountscaled, 0);
+            self.insatoken.burn(user, amountscaled);
+            self.underasset.transfer(receiverofunderlying, amount);
+        }
+
+        //    * @dev Mints `amount` aTokens to `user`
+        //    * - Only callable by the LendingPool, as extra state updates there need to be managed
+        //    * @param user The address receiving the minted tokens
+        //    * @param amount The amount of tokens getting minted
+        //    * @param index The new liquidity index of the reserve
+        //    * @return `true` if the the previous balance of the user was 0
+        #[ink(message)]
+        pub fn mint(&mut self, user: AccountId, amount: Balance, index: u32) -> bool {
+            //TODO need only lendingpool
+            let previousbalance = self.insatoken.balance_of(user);
+            let amountscaled = amount / index.into();
+            assert_ne!(amountscaled, 0);
+            self.insatoken.mint(user, amountscaled);
+            previousbalance == 0
+        }
+
+        //    * @dev Mints aTokens to the reserve treasury
+        //    * - Only callable by the LendingPool
+        //    * @param amount The amount of tokens getting minted
+        //    * @param index The new liquidity index of the reserve
+        #[ink(message)]
+        pub fn minttotreasury(&mut self, amount: Balance, index: u32) {
+            //TODO need only lendingpool
+            if amount == 0 {
+                return ();
             }
-            self.balances.insert(from, from_balance - value);
-            let to_balance = self.balance_of(to);
-            self.balances.insert(to, to_balance + value);
-            self.env().emit_event(Transfer {
-                from: Some(from),
-                to: Some(to),
-                value,
-            });
-            Ok(())
+            self.insatoken.mint(self.reserve_asset_address, amount);
+        }
+
+        // * @dev Transfers aTokens in the event of a borrow being liquidated, in case the liquidators reclaims the aToken
+        // * - Only callable by the LendingPool
+        // * @param from The address getting liquidated, current owner of the aTokens
+        // * @param to The recipient
+        // * @param value The amount of tokens getting transferred
+        #[ink(message)]
+        pub fn transferonliquidation(&mut self, from: AccountId, to: AccountId, value: Balance) {
+            //TODO only lengdingpool
+            self._transfer(from, to, value, false);
+        }
+
+        //    * @dev Transfers the aTokens between two users. Validates the transfer
+        //    * (ie checks for valid HF after the transfer) if required
+        //    * @param from The source address
+        //    * @param to The destination address
+        //    * @param amount The amount getting transferred
+        //    * @param validate `true` if the transfer needs to be validated
+        fn _transfer(&mut self, from: AccountId, to: AccountId, amount: Balance, validate: bool) {
+            //index should from lending pool
+            let index = 1;
+            let frombalancebefore = self.insatoken.balance_of(from) * index;
+            let tobalancebefore = self.insatoken.balance_of(to) * index;
+            self.insatoken.transfer_from_to(from, to, amount / index);
+            //if validate then update lendingpool status
+        }
+
+        // * @dev Calculates the balance of the user: principal balance + interest generated by the principal
+        // * @param user The user whose balance is calculated
+        // * @return The balance of the user
+        #[ink(message)]
+        pub fn balanceof(&self, user: AccountId) -> Balance {
+            //TODO index should come from lending pool
+            let index = 1;
+            self.insatoken.balance_of(user) * index
+        }
+
+        // * @dev Returns the scaled balance of the user and the scaled total supply.
+        // * @param user The address of the user
+        // * @return The scaled balance of the user
+        // * @return The scaled balance and the scaled total supply
+        #[ink(message)]
+        pub fn getscaledbalanceandsupply(&self, user: AccountId) -> (Balance, Balance) {
+            (
+                self.insatoken.balance_of(user),
+                self.insatoken.total_supply(),
+            )
+        }
+
+        //    * @dev calculates the total supply of the specific aToken
+        //    * since the balance of every single user increases over time, the total supply
+        //    * does that too.
+        //    * @return the current total supply
+        #[ink(message)]
+        pub fn totalsupply(&self) -> Balance {
+            let curr_totalsupply = self.insatoken.total_supply();
+            if curr_totalsupply == 0 {
+                return 0;
+            }
+            //TODO index should from lending pool
+            let index = 1;
+            curr_totalsupply * index
+        }
+
+        // * @dev Returns the scaled total supply of the variable debt token. Represents sum(debt/index)
+        // * @return the scaled total supply
+        #[ink(message)]
+        pub fn scaledtotalsuplly(&self) -> Balance {
+            self.insatoken.total_supply()
+        }
+
+        // * @dev Transfers the underlying asset to `target`. Used by the LendingPool to transfer
+        // * assets in borrow(), withdraw() and flashLoan()
+        // * @param target The recipient of the aTokens
+        // * @param amount The amount getting transferred
+        // * @return The amount transferred
+        #[ink(message)]
+        pub fn transferunderlyingto(&mut self, target: AccountId, amount: Balance) -> Balance {
+            //TODO only lendingpool
+            self.underasset.transfer(target, amount);
+            amount
         }
     }
 }

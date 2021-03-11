@@ -12,6 +12,8 @@ ink_storage = { version = "3.0.0-rc3", default-features = false }
 ink_lang = { version = "3.0.0-rc3", default-features = false }
 ink_prelude = { version = "3.0.0-rc3", default-features = false }
 
+incentivizederc20 = {version = "0.1.0", path = "../incentivizederc20", default-features = false, features = ["ink-as-dependency"]}
+
 scale = { package = "parity-scale-codec", version = "2.0.1", default-features = false, features = ["derive"] }
 scale-info = { version = "0.6.0", default-features = false, features = ["derive"], optional = true }
 
@@ -38,5 +40,6 @@ std = [
     "scale/std",
     "scale-info",
     "scale-info/std",
+    "incentivizederc20/std",
 ]
 ink-as-dependency = []
