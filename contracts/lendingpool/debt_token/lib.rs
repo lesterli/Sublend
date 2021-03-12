@@ -276,5 +276,15 @@ mod debt_token {
             });
             Ok(())
         }
+
+        ///delegate to someone
+        pub fn approvedelegation(
+            &mut self,
+            delegator: AccountId,
+            delegatee: AccountId,
+            amount: Balance,
+        ) {
+            self.allowances.insert((delegator, delegatee), amount);
+        }
     }
 }
