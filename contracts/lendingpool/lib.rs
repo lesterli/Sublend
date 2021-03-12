@@ -254,14 +254,14 @@ mod lendingpool {
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
 
-            //借款导致存款人计息的金额应该减少，所以应该更新一次
+            // borrow update depositor interest
             let should_count = stoken.balance_of(receiver) - dtoken.balance_of(receiver);
             let interest =
                 should_count * interval as u128 * self.reserve.stable_liquidity_rate / 100;
             reserve_data.cumulated_liquidity_interest += interest;
             reserve_data.last_update_timestamp = Self::env().block_timestamp();
 
-            //借款人的信息更新
+            // update borrow info
             let entry_sender = self.users_data.entry(sender);
             let reserve_data_sender = entry_sender.or_insert(Default::default());
             let interval =
@@ -272,7 +272,7 @@ mod lendingpool {
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
-            //更新delegate的金额
+            // update delegate amount
             dtoken.approvedelegation(receiver, sender, credit_balance - amount);
 
             // mint debt token to receiver
@@ -306,14 +306,14 @@ mod lendingpool {
             let sender = self.env().caller();
             let recevier = on_behalf_of;
 
-            //获取还款金额
+            // get repay amount
             let amount = self.env().transferred_balance();
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
             let mut dtoken: DebtToken =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
 
-            //更新利息
+            // update interest
             let reserve_data_sender = self
                 .users_data
                 .get_mut(&sender)
