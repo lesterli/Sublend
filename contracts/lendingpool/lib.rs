@@ -43,15 +43,11 @@ mod lendingpool {
     }
 
     /**
-     * @dev Emitted on borrow() and flashLoan() when debt needs to be opened
-     * @param reserve The address of the underlying asset being borrowed
-     * @param user The address of the user initiating the borrow(), receiving the funds on borrow() or just
-     * initiator of the transaction on flashLoan()
+     * @dev Emitted on borrow() when debt needs to be opened
+     * @param user The address of the user initiating the borrow(), receiving the funds on borrow() 
      * @param onBehalfOf The address that will be getting the debt
      * @param amount The amount borrowed out
-     * @param borrowRateMode The rate mode: 1 for Stable, 2 for Variable
      * @param borrowRate The numeric rate at which the user has borrowed
-     * @param referral The referral code used
      **/
     #[ink(event)]
     pub struct Borrow {
@@ -67,15 +63,14 @@ mod lendingpool {
 
     /**
      * @dev Emitted on repay()
-     * @param reserve The address of the underlying asset of the reserve
-     * @param user The beneficiary of the repayment, getting his debt reduced
+     * @param receiver The beneficiary of the repayment, getting his debt reduced
      * @param repayer The address of the user initiating the repay(), providing the funds
      * @param amount The amount repaid
      **/
     #[ink(event)]
     pub struct Repay {
         #[ink(topic)]
-        user: AccountId,
+        receiver: AccountId,
         #[ink(topic)]
         repayer: AccountId,
         #[ink(topic)]
@@ -87,7 +82,7 @@ mod lendingpool {
         // DOT
         reserve: ReserveData,
 
-        users_config: StorageHashMap<AccountId, UserReserveData>,
+        users_data: StorageHashMap<AccountId, UserReserveData>,
     }
 
     impl Lendingpool {
@@ -100,7 +95,7 @@ mod lendingpool {
                     stoken_address: stoken,
                     stable_debt_token_address: debt_token,
                 },
-                users_config: StorageHashMap::new(),
+                users_data: StorageHashMap::new(),
             }
         }
 
@@ -123,7 +118,7 @@ mod lendingpool {
 
             let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
 
-            let entry = self.users_config.entry(receiver);
+            let entry = self.users_data.entry(receiver);
             let reserve_data = entry.or_insert(Default::default());
             let user_balance = stoken.balance_of(receiver);
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
@@ -162,7 +157,7 @@ mod lendingpool {
             let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
             let user_balance = stoken.balance_of(sender);
             let reserve_data = self
-                .users_config
+                .users_data
                 .get_mut(&sender)
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
@@ -199,57 +194,94 @@ mod lendingpool {
         /**
          * @dev Allows users to borrow a specific `amount` of the reserve underlying asset, provided that the borrower
          * already deposited enough collateral, or he was given enough allowance by a credit delegator on the
-         * corresponding debt token (StableDebtToken or VariableDebtToken)
+         * corresponding debt token
          * - E.g. User borrows 100 USDC passing as `onBehalfOf` his own address, receiving the 100 USDC in his wallet
-         *   and 100 stable/variable debt tokens, depending on the `interestRateMode`
-         * @param asset The address of the underlying asset to borrow
+         *   and 100 stable debt tokens
          * @param amount The amount to be borrowed
-         * @param interestRateMode The interest rate mode at which the user wants to borrow: 1 for Stable, 2 for Variable
-         * @param referralCode Code used to register the integrator originating the operation, for potential rewards.
-         *   0 if the action is executed directly by the user, without any middle-man
          * @param onBehalfOf Address of the user who will receive the debt. Should be the address of the borrower itself
          * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator
          * if he has been given credit delegation allowance
          **/
-        #[ink(message)]
+        #[ink(message, payable)]
         pub fn borrow(&mut self, amount: Balance, on_behalf_of: AccountId) {
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
+
             let sender = self.env().caller();
-            let _user_config = self
-                .users_config
-                .get(&sender)
-                .expect("asset does not exist");
-            // TODO: oracle asset price * amount / decimal
-            let _amount_in_dot: u128 = 1;
-            // validate_borrow (
-            //     asset,
-            //     reserve,
-            //     on_behalf_of,
-            //     amount,
-            //     amount_in_dot,
-            //     MAX_STABLE_RATE_BORROW_SIZE_PERCENT,
-            //     &self.reserves,,
-            //     user_config,
-            //     &self.reserves_list,
-            //     self.reserves_count,
-            // );
+            let receiver = on_behalf_of;
 
-            // update_state(reserve);
+            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
+            // credit delegation allowances
+            let credit_balance = stoken.allowance(receiver, sender);
+            assert!(
+                amount <= credit_balance,
+                "{}",
+                VL_NOT_ENOUGH_AVAILABLE_USER_BALANCE
+            );
 
-            let current_stable_rate: u128 = self.reserve.stable_borrow_rate;
-            // debt token mint
+            let mut dtoken: DebtToken = FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+            // stoken - debetoken
+            let liquidation_threshold = stoken.balance_of(receiver) * 0.75 - dtoken.balance_of(receiver);
+            assert!(
+                amount <= liquidation_threshold,
+                "{}",
+                LP_NOT_ENOUGH_LIQUIDITY_TO_BORROW
+            );
+            
+            let entry = self.users_data.entry(receiver);
+            let reserve_data = entry.or_insert(Default::default());
+            let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
+            let interest = amount * interval as u128 * self.reserve.stable_borrow_rate / 100;
+            reserve_data.cumulated_stable_borrow_interest += interest;
+            reserve_data.last_update_timestamp = Self::env().block_timestamp();
+            // mint debt token to receiver
+            assert!(dtoken.mint(receiver, amount).is_ok());
 
-            // TODO: atoken
+            // transfer reserve asset to sender
             self.env()
                 .transfer(sender, amount)
-                .expect("aToken burn failed");
-
+                .expect("transfer failed");
+            
             self.env().emit_event(Borrow {
                 user: sender,
                 on_behalf_of,
                 amount,
-                borrow_rate: current_stable_rate,
+                borrow_rate: self.reserve.stable_borrow_rate,
             });
         }
+
+
+        /**
+         * @notice Repays a borrowed `amount` on a specific reserve, burning the equivalent debt tokens owned
+         * - E.g. User repays 100 USDC, burning 100 stable debt tokens of the `onBehalfOf` address
+         * @param amount The amount to repay
+         * - Send the value type(uint256).max in order to repay the whole debt for `asset` on the specific `debtMode`
+         * @param onBehalfOf Address of the user who will get his debt reduced/removed. Should be the address of the
+         * user calling the function if he wants to reduce/remove his own debt, or the address of any other
+         * other borrower whose debt should be removed
+         * @return The final amount repaid
+         **/
+        #[ink(message)]
+        pub fn repay(&mut self, amount: Balance, on_behalf_of: AccountId) {
+            assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
+
+            let sender = self.env().caller();
+
+            let mut dtoken: DebtToken = FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+            // burn debt token for receiver
+            assert!(dtoken.burn(receiver, amount).is_ok());
+
+            // transfer reserve asset to receiver
+            self.env()
+                .transfer(receiver, amount)
+                .expect("transfer failed");
+
+            self.env().emit_event(Borrow {
+                receiver: on_behalf_of,
+                repayer: sender,
+                amount,
+            });
+
+        }
+
     }
 }
