@@ -278,8 +278,12 @@ mod debt_token {
         }
 
         ///delegate to someone
-        pub fn approvedelegation(&mut self,delegator: AccountId, delegatee: AccountId, amount: Balance){
-            
+        pub fn approvedelegation(
+            &mut self,
+            delegator: AccountId,
+            delegatee: AccountId,
+            amount: Balance,
+        ) {
             self.allowances.insert((delegator, delegatee), amount);
         }
     }
