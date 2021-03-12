@@ -277,8 +277,9 @@ mod debt_token {
             Ok(())
         }
 
-        ///delegate to someone
-        pub fn approvedelegation(
+        /// delegate to someone
+        #[ink(message)]
+        pub fn approve_delegation(
             &mut self,
             delegator: AccountId,
             delegatee: AccountId,

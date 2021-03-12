@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0xca3fb1d9290ce62574d9fefb6dc551fbfd36276f6d4ef05ecd75349ae60da29f",
+    "hash": "0x400f0e64908d621c24703a9ac0e7ffcf157c5f897621207085f582da1cde518e",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -182,7 +182,7 @@
           }
         ],
         "docs": [
-          "\n     * @dev Emitted on borrow() and flashLoan() when debt needs to be opened\n     * @param reserve The address of the underlying asset being borrowed\n     * @param user The address of the user initiating the borrow(), receiving the funds on borrow() or just\n     * initiator of the transaction on flashLoan()\n     * @param onBehalfOf The address that will be getting the debt\n     * @param amount The amount borrowed out\n     * @param borrowRateMode The rate mode: 1 for Stable, 2 for Variable\n     * @param borrowRate The numeric rate at which the user has borrowed\n     * @param referral The referral code used\n     *"
+          "\n     * @dev Emitted on borrow() when debt needs to be opened\n     * @param user The address of the user initiating the borrow(), receiving the funds on borrow()\n     * @param onBehalfOf The address that will be getting the debt\n     * @param amount The amount borrowed out\n     * @param borrowRate The numeric rate at which the user has borrowed\n     *"
         ],
         "name": "Borrow"
       },
@@ -191,7 +191,7 @@
           {
             "docs": [],
             "indexed": true,
-            "name": "user",
+            "name": "receiver",
             "type": {
               "displayName": [
                 "AccountId"
@@ -223,9 +223,50 @@
           }
         ],
         "docs": [
-          "\n     * @dev Emitted on repay()\n     * @param reserve The address of the underlying asset of the reserve\n     * @param user The beneficiary of the repayment, getting his debt reduced\n     * @param repayer The address of the user initiating the repay(), providing the funds\n     * @param amount The amount repaid\n     *"
+          "\n     * @dev Emitted on repay()\n     * @param receiver The beneficiary of the repayment, getting his debt reduced\n     * @param repayer The address of the user initiating the repay(), providing the funds\n     * @param amount The amount repaid\n     *"
         ],
         "name": "Repay"
+      },
+      {
+        "args": [
+          {
+            "docs": [],
+            "indexed": true,
+            "name": "delegator",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          },
+          {
+            "docs": [],
+            "indexed": true,
+            "name": "delegatee",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          },
+          {
+            "docs": [],
+            "indexed": true,
+            "name": "amount",
+            "type": {
+              "displayName": [
+                "Balance"
+              ],
+              "type": 1
+            }
+          }
+        ],
+        "docs": [
+          "\n     * @dev emitted on approvedelegation\n     * @param delegator  who have money and allow delegatee use it as collateral\n     * @param delegatee who can borrow money from pool without collateral\n     * @param amount the amount\n     *"
+        ],
+        "name": "Delegate"
       }
     ],
     "messages": [
@@ -320,15 +361,70 @@
           }
         ],
         "docs": [
-          "\n         * @dev Allows users to borrow a specific `amount` of the reserve underlying asset, provided that the borrower\n         * already deposited enough collateral, or he was given enough allowance by a credit delegator on the\n         * corresponding debt token (StableDebtToken or VariableDebtToken)\n         * - E.g. User borrows 100 USDC passing as `onBehalfOf` his own address, receiving the 100 USDC in his wallet\n         *   and 100 stable/variable debt tokens, depending on the `interestRateMode`\n         * @param asset The address of the underlying asset to borrow\n         * @param amount The amount to be borrowed\n         * @param interestRateMode The interest rate mode at which the user wants to borrow: 1 for Stable, 2 for Variable\n         * @param referralCode Code used to register the integrator originating the operation, for potential rewards.\n         *   0 if the action is executed directly by the user, without any middle-man\n         * @param onBehalfOf Address of the user who will receive the debt. Should be the address of the borrower itself\n         * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator\n         * if he has been given credit delegation allowance\n         *"
+          "\n         * @dev Allows users to borrow a specific `amount` of the reserve underlying asset, provided that the borrower\n         * already deposited enough collateral, or he was given enough allowance by a credit delegator on the\n         * corresponding debt token\n         * - E.g. User borrows 100 USDC passing as `onBehalfOf` his own address, receiving the 100 USDC in his wallet\n         *   and 100 stable debt tokens\n         * @param amount The amount to be borrowed\n         * @param onBehalfOf Address of the user who will receive the debt. Should be the address of the borrower itself\n         * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator\n         * if he has been given credit delegation allowance\n         *"
         ],
         "mutates": true,
         "name": [
           "borrow"
         ],
-        "payable": false,
+        "payable": true,
         "returnType": null,
         "selector": "0x7acb5e2e"
+      },
+      {
+        "args": [
+          {
+            "name": "on_behalf_of",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          }
+        ],
+        "docs": [
+          "\n         * @notice Repays a borrowed `amount` on a specific reserve, burning the equivalent debt tokens owned\n         * - E.g. User repays 100 USDC, burning 100 stable debt tokens of the `onBehalfOf` address\n         * @param amount The amount to repay\n         * - Send the value type(uint256).max in order to repay the whole debt for `asset` on the specific `debtMode`\n         * @param onBehalfOf Address of the user who will get his debt reduced/removed. Should be the address of the\n         * user calling the function if he wants to reduce/remove his own debt, or the address of any other\n         * other borrower whose debt should be removed\n         * @return The final amount repaid\n         *"
+        ],
+        "mutates": true,
+        "name": [
+          "repay"
+        ],
+        "payable": false,
+        "returnType": null,
+        "selector": "0xa9f4b044"
+      },
+      {
+        "args": [
+          {
+            "name": "delegatee",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          },
+          {
+            "name": "amount",
+            "type": {
+              "displayName": [
+                "Balance"
+              ],
+              "type": 1
+            }
+          }
+        ],
+        "docs": [
+          "\n         * @dev dekegate to someone called only by owenr\n         * @param delegatee user who accpet the allowance\n         * @param amount the amount of the allowance\n         *"
+        ],
+        "mutates": true,
+        "name": [
+          "approve_delegation"
+        ],
+        "payable": false,
+        "returnType": null,
+        "selector": "0x9b451660"
       }
     ]
   },
@@ -458,7 +554,7 @@
               ]
             }
           },
-          "name": "users_config"
+          "name": "users_data"
         }
       ]
     }
@@ -625,6 +721,11 @@
           "fields": [
             {
               "name": "cumulated_liquidity_interest",
+              "type": 1,
+              "typeName": "u128"
+            },
+            {
+              "name": "cumulated_stable_borrow_interest",
               "type": 1,
               "typeName": "u128"
             },

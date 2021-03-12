@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0xc44b5192b773b4c1c17b1bfa62ed379dcd31587b5e0991cacdd328dc7be88b0d",
+    "hash": "0xbdeb70e3df9f6388c98842c51e88e7364c3a8407192ea0a7e72ab5444a6c8ced",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -568,6 +568,47 @@
           "type": 15
         },
         "selector": "0xb1efc17b"
+      },
+      {
+        "args": [
+          {
+            "name": "delegator",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 5
+            }
+          },
+          {
+            "name": "delegatee",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 5
+            }
+          },
+          {
+            "name": "amount",
+            "type": {
+              "displayName": [
+                "Balance"
+              ],
+              "type": 1
+            }
+          }
+        ],
+        "docs": [
+          " delegate to someone"
+        ],
+        "mutates": true,
+        "name": [
+          "approve_delegation"
+        ],
+        "payable": false,
+        "returnType": null,
+        "selector": "0x9b451660"
       }
     ]
   },

@@ -7,6 +7,7 @@ use ink_lang as ink;
 #[ink::contract]
 mod lendingpool {
     use crate::types::*;
+    use debt_token::DebtToken;
     use stoken::SToken;
 
     use ink_env::call::FromAccountId;
@@ -83,6 +84,7 @@ mod lendingpool {
      * @param delegatee who can borrow money from pool without collateral
      * @param amount the amount
      **/
+    #[ink(event)]
     pub struct Delegate {
         #[ink(topic)]
         delegator: AccountId,
@@ -177,7 +179,7 @@ mod lendingpool {
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
             //我觉得计算利息的时候应该用stoken - debttoken 差值来计算利息
-            let mut dtoken: DebtToken =
+            let dtoken: DebtToken =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             let should_count = stoken.balance_of(receiver) - dtoken.balance_of(receiver);
             let interest =
@@ -228,7 +230,7 @@ mod lendingpool {
             let sender = self.env().caller();
             let receiver = on_behalf_of;
 
-            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
             let mut dtoken: DebtToken =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             // credit delegation allowances
@@ -241,14 +243,14 @@ mod lendingpool {
 
             // stoken - debetoken
             let liquidation_threshold =
-                stoken.balance_of(receiver) * 0.75 - dtoken.balance_of(receiver);
+                stoken.balance_of(receiver) * 75 / 100 - dtoken.balance_of(receiver);
             assert!(
                 amount <= liquidation_threshold,
                 "{}",
                 LP_NOT_ENOUGH_LIQUIDITY_TO_BORROW
             );
 
-            let reserve_data = entry
+            let reserve_data = self
                 .users_data
                 .get_mut(&receiver)
                 .expect("user config does not exist");
@@ -266,14 +268,16 @@ mod lendingpool {
             let reserve_data_sender = entry_sender.or_insert(Default::default());
             let interval =
                 Self::env().block_timestamp() - reserve_data_sender.last_update_timestamp;
-            reserve_data_sender.cumulated_stable_borrow_interest +=
-                reserve_data_sender.borrow_balance * interval as u128 * self.stable_borrow_rate
-                    / 100;
+            reserve_data_sender.cumulated_stable_borrow_interest += reserve_data_sender
+                .borrow_balance
+                * interval as u128
+                * self.reserve.stable_borrow_rate
+                / 100;
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
             // update delegate amount
-            dtoken.approvedelegation(receiver, sender, credit_balance - amount);
+            dtoken.approve_delegation(receiver, sender, credit_balance - amount);
 
             // mint debt token to receiver
             assert!(dtoken.mint(receiver, amount).is_ok());
@@ -318,10 +322,13 @@ mod lendingpool {
                 .users_data
                 .get_mut(&sender)
                 .expect("you have not borrow any dot");
-            let interval = Self.env().block_timestamp() - reserve_data_sender.last_update_timestamp;
-            reserve_data_sender.cumulated_stable_borrow_interest +=
-                reserve_data_sender.borrow_balance * interval as u128 * self.stable_borrow_rate
-                    / 100;
+            let interval =
+                Self::env().block_timestamp() - reserve_data_sender.last_update_timestamp;
+            reserve_data_sender.cumulated_stable_borrow_interest += reserve_data_sender
+                .borrow_balance
+                * interval as u128
+                * self.reserve.stable_borrow_rate
+                / 100;
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
@@ -346,14 +353,14 @@ mod lendingpool {
          * @param amount the amount of the allowance
          **/
         #[ink(message)]
-        pub fn approvedelegation(&mut self, delegatee: AccountId, amount: Balance) {
+        pub fn approve_delegation(&mut self, delegatee: AccountId, amount: Balance) {
             let mut debttoken: DebtToken =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             let sender = self.env().caller();
-            debttoken.approvedelegation(sender, delegatee, amount);
+            debttoken.approve_delegation(sender, delegatee, amount);
             self.env().emit_event(Delegate {
                 delegator: sender,
-                delegatee: delegatee,
+                delegatee,
                 amount,
             });
         }
