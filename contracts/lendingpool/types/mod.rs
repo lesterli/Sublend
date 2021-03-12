@@ -34,7 +34,7 @@ pub struct ReserveData {
 )]
 pub struct UserReserveData {
     pub cumulated_liquidity_interest: u128,
-
+    pub cumulated_stable_borrow_interest: u128,
     pub last_update_timestamp: u64,
     // amount borrowed by the user.
     pub borrow_balance: u128,
