@@ -99,9 +99,8 @@ mod lendingpool {
         reserve: ReserveData,
 
         users_data: StorageHashMap<AccountId, UserReserveData>,
-
         //store the delegateallowance
-        delegateallowance: StorageHashMap<(AccountId, AccountId),Balance>,
+        delegate_allowance: StorageHashMap<(AccountId, AccountId), Balance>,
     }
 
     impl Lendingpool {
@@ -115,6 +114,7 @@ mod lendingpool {
                     stable_debt_token_address: debt_token,
                 },
                 users_data: StorageHashMap::new(),
+                delegate_allowance: StorageHashMap::new(),
             }
         }
 
@@ -136,11 +136,12 @@ mod lendingpool {
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
             let mut stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
-            let mut debttoken: IERC20 = FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+            let debttoken: IERC20 =
+                FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
 
             let entry = self.users_data.entry(receiver);
             let reserve_data = entry.or_insert(Default::default());
-            //user balance should always be stoken - debttoken 
+            // user balance should always be stoken - debttoken
             let user_balance = stoken.balance_of(receiver) - debttoken.balance_of(receiver);
 
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
@@ -177,7 +178,8 @@ mod lendingpool {
             }
 
             let mut stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
-            let mut debttoken: IERC20 = FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+            let debttoken: IERC20 =
+                FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             //user balance should always be stoken - debttoken
             let user_balance = stoken.balance_of(sender) - debttoken.balance_of(sender);
             let reserve_data = self
@@ -235,10 +237,15 @@ mod lendingpool {
             let receiver = on_behalf_of;
 
             let stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
-            let mut dtoken: IERC20 = FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+            let mut dtoken: IERC20 =
+                FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
 
             // credit delegation allowances check
-            let credit_balance = self.delegateallowance.get(&(receiver,sender)).copied().unwarp_or(0);
+            let credit_balance = self
+                .delegate_allowance
+                .get(&(receiver, sender))
+                .copied()
+                .unwrap_or(0);
             assert!(
                 amount <= credit_balance,
                 "{}",
@@ -281,7 +288,8 @@ mod lendingpool {
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
             // TODO update delegate amount 这里需要修改 更新实际的delgate map
-            self.delegateallowance.insert((receiver,sender),credit_balance - amount);
+            self.delegate_allowance
+                .insert((receiver, sender), credit_balance - amount);
             dtoken
                 .transfer_from(receiver, sender, credit_balance - amount)
                 .expect("transfer failed");
@@ -353,17 +361,17 @@ mod lendingpool {
                 amount,
             });
         }
-    }
-
 
         /**
          * @dev delgator can delegate some their own credits which get by deposit funds to delegatee
-         * @param delegatee who can borrow without collateral 
+         * @param delegatee who can borrow without collateral
          * @param amount
          */
         #[ink(message)]
-        pub fn delegate(&mut self, delegatee: AccountId, amount: Balance){
+        pub fn delegate(&mut self, delegatee: AccountId, amount: Balance) {
             let delegator = self.env().caller();
-            self.delegateallowance.insert((delegator,delegatee),amount);
+            self.delegate_allowance
+                .insert((delegator, delegatee), amount);
         }
+    }
 }
