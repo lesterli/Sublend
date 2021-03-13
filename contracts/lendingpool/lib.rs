@@ -7,8 +7,7 @@ use ink_lang as ink;
 #[ink::contract]
 mod lendingpool {
     use crate::types::*;
-    use debt_token::DebtToken;
-    use stoken::SToken;
+    use ierc20::IERC20;
 
     use ink_env::call::FromAccountId;
     use ink_storage::collections::HashMap as StorageHashMap;
@@ -133,7 +132,7 @@ mod lendingpool {
             let amount = self.env().transferred_balance();
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
-            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let mut stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
 
             let entry = self.users_data.entry(receiver);
             let reserve_data = entry.or_insert(Default::default());
@@ -171,7 +170,7 @@ mod lendingpool {
                 receiver = behalf;
             }
 
-            let mut stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let mut stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
             let user_balance = stoken.balance_of(sender);
             let reserve_data = self
                 .users_data
@@ -179,7 +178,7 @@ mod lendingpool {
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
             // stoken - debttoken
-            let dtoken: DebtToken =
+            let dtoken: IERC20 =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             let should_count = stoken.balance_of(receiver) - dtoken.balance_of(receiver);
             let interest =
@@ -230,8 +229,8 @@ mod lendingpool {
             let sender = self.env().caller();
             let receiver = on_behalf_of;
 
-            let stoken: SToken = FromAccountId::from_account_id(self.reserve.stoken_address);
-            let mut dtoken: DebtToken =
+            let stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let mut dtoken: IERC20 =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             // credit delegation allowances
             let credit_balance = dtoken.allowance(receiver, sender);
@@ -276,8 +275,10 @@ mod lendingpool {
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
-            // update delegate amount
-            dtoken.approve_delegation(receiver, sender, credit_balance - amount);
+            // TODO update delegate amount 这里需要修改 更新实际的delgate map
+            dtoken
+                .transfer_from(receiver, sender, credit_balance - amount)
+                .expect("transfer failed");
 
             // mint debt token to receiver
             assert!(dtoken.mint(receiver, amount).is_ok());
@@ -314,7 +315,7 @@ mod lendingpool {
             let amount = self.env().transferred_balance();
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
-            let mut dtoken: DebtToken =
+            let mut dtoken: IERC20 =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
 
             // update interest
@@ -343,24 +344,6 @@ mod lendingpool {
             self.env().emit_event(Repay {
                 receiver: on_behalf_of,
                 repayer: sender,
-                amount,
-            });
-        }
-
-        /**
-         * @dev dekegate to someone called only by owenr
-         * @param delegatee user who accpet the allowance
-         * @param amount the amount of the allowance
-         **/
-        #[ink(message)]
-        pub fn approve_delegation(&mut self, delegatee: AccountId, amount: Balance) {
-            let mut debttoken: DebtToken =
-                FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
-            let sender = self.env().caller();
-            debttoken.approve_delegation(sender, delegatee, amount);
-            self.env().emit_event(Delegate {
-                delegator: sender,
-                delegatee,
                 amount,
             });
         }

@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0x65ca4d2ea1cba36d0e39aa0f463d6ccf288b4346be5eb5177b60aab0c17fc843",
+    "hash": "0x4b2b92e91dfea3b1ce705754c1923396858454c0ea00cab3284fce305315425d",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -393,38 +393,6 @@
         "payable": false,
         "returnType": null,
         "selector": "0xa9f4b044"
-      },
-      {
-        "args": [
-          {
-            "name": "delegatee",
-            "type": {
-              "displayName": [
-                "AccountId"
-              ],
-              "type": 2
-            }
-          },
-          {
-            "name": "amount",
-            "type": {
-              "displayName": [
-                "Balance"
-              ],
-              "type": 1
-            }
-          }
-        ],
-        "docs": [
-          "\n         * @dev dekegate to someone called only by owenr\n         * @param delegatee user who accpet the allowance\n         * @param amount the amount of the allowance\n         *"
-        ],
-        "mutates": true,
-        "name": [
-          "approve_delegation"
-        ],
-        "payable": false,
-        "returnType": null,
-        "selector": "0x9b451660"
       }
     ]
   },
