@@ -178,7 +178,7 @@ mod lendingpool {
                 .get_mut(&sender)
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
-            //我觉得计算利息的时候应该用stoken - debttoken 差值来计算利息
+            // stoken - debttoken
             let dtoken: DebtToken =
                 FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
             let should_count = stoken.balance_of(receiver) - dtoken.balance_of(receiver);

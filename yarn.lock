@@ -273,7 +273,7 @@
     "@types/websocket" "^1.0.1"
     websocket "^1.0.33"
 
-"@redspot/chai@0.10.1":
+"@redspot/chai@^0.10.1":
   version "0.10.1"
   resolved "https://registry.yarnpkg.com/@redspot/chai/-/chai-0.10.1.tgz#1906d267528aeb0b12366c45f207782c8dac4508"
   integrity sha512-rhqLwIJodsSblILbCcfdMQpcePRKV2GysL2H8GBnJkrzBgZpffr2waO23Q9BhS8bMZDWG6Cn+YoQxzTdCfUtyg==
@@ -294,7 +294,7 @@
     redspot "^0.10.1"
     sync-request "^6.1.0"
 
-"@redspot/patract@0.10.1":
+"@redspot/patract@^0.10.1":
   version "0.10.1"
   resolved "https://registry.yarnpkg.com/@redspot/patract/-/patract-0.10.1.tgz#5d105b9bfed601aeff27ab11e17a22b6cdd319b2"
   integrity sha512-QytPUBusrwyT3MbTUSyQs498M9jtH/pZgIq+klbq5ShT9L0F3DtmDxPUvSuGLz4/UEXedhF/AjOuyTXSYekpfA==
