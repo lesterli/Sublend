@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0xee5538c108788e4b8154a7da328604d39f20a50e9c160df2ffc11303b8d1d6f1",
+    "hash": "0xcd5829dc70300b91cd718fc7353d7fbeb0a998d9ea6c17cb5e8276e59d146cc4",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -165,17 +165,6 @@
             "type": {
               "displayName": [
                 "Balance"
-              ],
-              "type": 1
-            }
-          },
-          {
-            "docs": [],
-            "indexed": true,
-            "name": "borrow_rate",
-            "type": {
-              "displayName": [
-                "u128"
               ],
               "type": 1
             }
@@ -477,6 +466,41 @@
         "payable": false,
         "returnType": null,
         "selector": "0xc59654fe"
+      },
+      {
+        "args": [
+          {
+            "name": "delegator",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          },
+          {
+            "name": "delegatee",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          }
+        ],
+        "docs": [],
+        "mutates": false,
+        "name": [
+          "delegate_amount"
+        ],
+        "payable": false,
+        "returnType": {
+          "displayName": [
+            "Balance"
+          ],
+          "type": 1
+        },
+        "selector": "0x3151c067"
       }
     ]
   },

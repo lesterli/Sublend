@@ -59,8 +59,6 @@ mod lendingpool {
         on_behalf_of: AccountId,
         #[ink(topic)]
         amount: Balance,
-        #[ink(topic)]
-        borrow_rate: u128,
     }
 
     /**
@@ -335,9 +333,9 @@ mod lendingpool {
             // update delegate amount
             self.delegate_allowance
                 .insert((receiver, sender), credit_balance - amount);
-            dtoken
-                .transfer_from(receiver, sender, credit_balance - amount)
-                .expect("transfer failed");
+            // dtoken
+            //     .transfer_from(receiver, sender, credit_balance - amount)
+            //     .expect("transfer failed");
 
             // mint debt token to receiver
             assert!(dtoken.mint(receiver, amount).is_ok());
@@ -351,7 +349,6 @@ mod lendingpool {
                 user: sender,
                 on_behalf_of,
                 amount,
-                borrow_rate: self.reserve.stable_borrow_rate,
             });
         }
 
@@ -417,6 +414,14 @@ mod lendingpool {
             let delegator = self.env().caller();
             self.delegate_allowance
                 .insert((delegator, delegatee), amount);
+        }
+
+        #[ink(message)]
+        pub fn delegate_amount(&self, delegator: AccountId, delegatee: AccountId) -> Balance {
+            self.delegate_allowance
+                .get(&(delegator, delegatee))
+                .copied()
+                .unwrap_or(0u128)
         }
     }
 }
