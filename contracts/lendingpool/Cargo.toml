@@ -16,7 +16,8 @@ scale = { package = "parity-scale-codec", version = "2.0.1", default-features = 
 scale-info = { version = "0.6.0", default-features = false, features = ["derive"], optional = true }
 
 ierc20 = { version = "0.1.0", path = "ierc20", default-features = false, features = ["ink-as-dependency"] }
-ink_log = { git = "https://github.com/patractlabs/ink-log", branch = "master", default-features = false, features = ["ink-log-chain-extensions"] }
+ink_log = { git = "https://github.com/patractlabs/ink-log", branch = "master", default-features = false }
+#ink_log = { git = "https://github.com/patractlabs/ink-log", branch = "master", default-features = false, features = ["ink-log-chain-extensions"] }
 
 # Should be removed once bitvecto-rs/bitvec#105 is resolved
 funty = "=1.1.0"
