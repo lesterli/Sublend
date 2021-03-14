@@ -3,11 +3,13 @@
 mod types;
 
 use ink_lang as ink;
+use ink_log::CustomEnvironment;
 
-#[ink::contract]
+#[ink::contract(env = crate::CustomEnvironment)]
 mod lendingpool {
     use crate::types::*;
     use ierc20::IERC20;
+    use ink_log::info;
 
     use ink_env::call::FromAccountId;
     use ink_storage::collections::HashMap as StorageHashMap;
@@ -108,7 +110,7 @@ mod lendingpool {
         pub fn new(stoken: AccountId, debt_token: AccountId) -> Self {
             Self {
                 reserve: ReserveData {
-                    stable_liquidity_rate: 5,
+                    stable_liquidity_rate: 18,
                     stable_borrow_rate: 10,
                     stoken_address: stoken,
                     stable_debt_token_address: debt_token,
@@ -144,11 +146,17 @@ mod lendingpool {
             // user balance should always be stoken - debttoken
             let user_balance = stoken.balance_of(receiver) - debttoken.balance_of(receiver);
 
-            let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
-            let interest =
-                user_balance * interval as u128 * self.reserve.stable_liquidity_rate / 100;
-            reserve_data.cumulated_liquidity_interest += interest;
-            reserve_data.last_update_timestamp = Self::env().block_timestamp();
+            if reserve_data.last_update_timestamp != 0 {
+                let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
+                let interest = user_balance * interval as u128 * self.reserve.stable_liquidity_rate
+                    / (100 * 365 * 24 * 3600 * 1000);
+                if interest > 0 {
+                    reserve_data.cumulated_liquidity_interest += interest;
+                    reserve_data.last_update_timestamp = Self::env().block_timestamp();
+                }
+            } else {
+                reserve_data.last_update_timestamp = Self::env().block_timestamp();
+            }
 
             assert!(stoken.mint(receiver, amount).is_ok());
 
@@ -157,6 +165,37 @@ mod lendingpool {
                 on_behalf_of: receiver,
                 amount,
             });
+        }
+
+        #[ink(message)]
+        pub fn get_reserve_data(&self, user: AccountId) -> Option<UserReserveData> {
+            self.users_data.get(&user).cloned()
+        }
+
+        #[ink(message)]
+        pub fn get_scaled_balance(&self, user: AccountId) -> Balance {
+            let reserve_data = self
+                .users_data
+                .get(&user)
+                .cloned()
+                .unwrap_or(Default::default());
+
+            let stoken: IERC20 = FromAccountId::from_account_id(self.reserve.stoken_address);
+            let debttoken: IERC20 =
+                FromAccountId::from_account_id(self.reserve.stable_debt_token_address);
+
+            // user balance should always be stoken - debttoken
+            let mut user_balance = stoken
+                .balance_of(user)
+                .saturating_sub(debttoken.balance_of(user));
+
+            if reserve_data.last_update_timestamp != 0 {
+                let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
+                let interest = user_balance * interval as u128 * self.reserve.stable_liquidity_rate
+                    / (100 * 365 * 24 * 3600 * 1000);
+                user_balance += interest;
+            }
+            user_balance
         }
 
         /// * @dev Withdraws an `amount` of underlying asset from the reserve, burning the equivalent aTokens owned
@@ -188,10 +227,12 @@ mod lendingpool {
                 .expect("user config does not exist");
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
 
-            let interest =
-                user_balance * interval as u128 * self.reserve.stable_liquidity_rate / 100;
-            reserve_data.cumulated_liquidity_interest += interest;
-            reserve_data.last_update_timestamp = Self::env().block_timestamp();
+            let interest = user_balance * interval as u128 * self.reserve.stable_liquidity_rate
+                / (100 * 365 * 24 * 3600 * 1000);
+            if interest > 0 {
+                reserve_data.cumulated_liquidity_interest += interest;
+                reserve_data.last_update_timestamp = Self::env().block_timestamp();
+            }
 
             let cur_user_balance = user_balance + reserve_data.cumulated_liquidity_interest;
             assert!(
@@ -200,6 +241,10 @@ mod lendingpool {
                 VL_NOT_ENOUGH_AVAILABLE_USER_BALANCE
             );
 
+            info!(
+                "[LendingPool|withdraw] amount: {}, interest: {}",
+                amount, reserve_data.cumulated_liquidity_interest
+            );
             if amount <= reserve_data.cumulated_liquidity_interest {
                 reserve_data.cumulated_liquidity_interest -= amount;
             } else {
@@ -229,7 +274,7 @@ mod lendingpool {
          * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator
          * if he has been given credit delegation allowance
          **/
-        #[ink(message, payable)]
+        #[ink(message)]
         pub fn borrow(&mut self, amount: Balance, on_behalf_of: AccountId) {
             assert_ne!(amount, 0, "{}", VL_INVALID_AMOUNT);
 
@@ -269,8 +314,8 @@ mod lendingpool {
 
             // borrow update depositor interest
             let user_balance = stoken.balance_of(receiver) - dtoken.balance_of(receiver);
-            let interest =
-                user_balance * interval as u128 * self.reserve.stable_liquidity_rate / 100;
+            let interest = user_balance * interval as u128 * self.reserve.stable_liquidity_rate
+                / (100 * 365 * 24 * 3600 * 1000);
             reserve_data.cumulated_liquidity_interest += interest;
             reserve_data.last_update_timestamp = Self::env().block_timestamp();
 
@@ -283,11 +328,11 @@ mod lendingpool {
                 .borrow_balance
                 * interval as u128
                 * self.reserve.stable_borrow_rate
-                / 100;
+                / (100 * 365 * 24 * 3600 * 1000);
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 
-            // TODO update delegate amount 这里需要修改 更新实际的delgate map
+            // update delegate amount
             self.delegate_allowance
                 .insert((receiver, sender), credit_balance - amount);
             dtoken
@@ -320,7 +365,7 @@ mod lendingpool {
          * other borrower whose debt should be removed
          * @return The final amount repaid
          **/
-        #[ink(message)]
+        #[ink(message, payable)]
         pub fn repay(&mut self, on_behalf_of: AccountId) {
             let sender = self.env().caller();
             let recevier = on_behalf_of;
@@ -343,7 +388,7 @@ mod lendingpool {
                 .borrow_balance
                 * interval as u128
                 * self.reserve.stable_borrow_rate
-                / 100;
+                / (100 * 365 * 24 * 3600 * 1000);
             reserve_data_sender.borrow_balance += amount;
             reserve_data_sender.last_update_timestamp = Self::env().block_timestamp();
 

@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0x08a30c7ebe4fa6373cb111a843dd4727cc54efb6a33a44fb6e40399f5a7a63fd",
+    "hash": "0xee5538c108788e4b8154a7da328604d39f20a50e9c160df2ffc11303b8d1d6f1",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -302,6 +302,58 @@
       {
         "args": [
           {
+            "name": "user",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          }
+        ],
+        "docs": [],
+        "mutates": false,
+        "name": [
+          "get_reserve_data"
+        ],
+        "payable": false,
+        "returnType": {
+          "displayName": [
+            "Option"
+          ],
+          "type": 16
+        },
+        "selector": "0x8e7f29a6"
+      },
+      {
+        "args": [
+          {
+            "name": "user",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          }
+        ],
+        "docs": [],
+        "mutates": false,
+        "name": [
+          "get_scaled_balance"
+        ],
+        "payable": false,
+        "returnType": {
+          "displayName": [
+            "Balance"
+          ],
+          "type": 1
+        },
+        "selector": "0xb26395db"
+      },
+      {
+        "args": [
+          {
             "name": "amount",
             "type": {
               "displayName": [
@@ -367,7 +419,7 @@
         "name": [
           "borrow"
         ],
-        "payable": true,
+        "payable": false,
         "returnType": null,
         "selector": "0x7acb5e2e"
       },
@@ -390,7 +442,7 @@
         "name": [
           "repay"
         ],
-        "payable": false,
+        "payable": true,
         "returnType": null,
         "selector": "0xa9f4b044"
       },
@@ -924,6 +976,32 @@
       },
       "params": [
         2
+      ],
+      "path": [
+        "Option"
+      ]
+    },
+    {
+      "def": {
+        "variant": {
+          "variants": [
+            {
+              "name": "None"
+            },
+            {
+              "fields": [
+                {
+                  "type": 10,
+                  "typeName": "T"
+                }
+              ],
+              "name": "Some"
+            }
+          ]
+        }
+      },
+      "params": [
+        10
       ],
       "path": [
         "Option"
