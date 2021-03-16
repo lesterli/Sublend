@@ -231,7 +231,7 @@ mod lendingpool {
                 reserve_data.last_update_timestamp = Self::env().block_timestamp();
             }
 
-            let cur_user_balance = user_balance + reserve_data.cumulated_liquidity_interest;
+            let cur_user_balance = (stoken.balance_of(receiver)  - debttoken.balance_of(receiver)* 100/75) + reserve_data.cumulated_liquidity_interest ;
             assert!(
                 amount <= cur_user_balance,
                 "{}",
@@ -292,7 +292,7 @@ mod lendingpool {
 
             // stoken - debetoken
             let liquidation_threshold =
-                stoken.balance_of(receiver) * 75 / 100 - dtoken.balance_of(receiver);
+                stoken.balance_of(receiver)  - dtoken.balance_of(receiver)* 100/75 ;
             assert!(
                 amount <= liquidation_threshold,
                 "{}",
@@ -306,7 +306,7 @@ mod lendingpool {
             let interval = Self::env().block_timestamp() - reserve_data.last_update_timestamp;
 
             // borrow update depositor interest
-            let user_balance = stoken.balance_of(receiver) - dtoken.balance_of(receiver);
+            let user_balance = stoken.balance_of(receiver) - dtoken.balance_of(receiver) ;
             let interest = user_balance * interval as u128 * self.reserve.stable_liquidity_rate
                 / (100 * 365 * 24 * 3600 * 1000);
             reserve_data.cumulated_liquidity_interest += interest;
