@@ -1,7 +1,7 @@
 {
   "metadataVersion": "0.1.0",
   "source": {
-    "hash": "0x42de3d04ad91ef6f2076ff5cd28b8b0cad79e7290eed2b6cb2024f96c4791f07",
+    "hash": "0xb2e31452af9dd2e45fc1b2b90be64623dd728b181819dd0edb667ec5d7b43dd2",
     "language": "ink! 3.0.0-rc3",
     "compiler": "rustc 1.52.0-nightly"
   },
@@ -501,6 +501,32 @@
           "type": 1
         },
         "selector": "0x3151c067"
+      },
+      {
+        "args": [
+          {
+            "name": "delegatee",
+            "type": {
+              "displayName": [
+                "AccountId"
+              ],
+              "type": 2
+            }
+          }
+        ],
+        "docs": [],
+        "mutates": false,
+        "name": [
+          "delegate_of"
+        ],
+        "payable": false,
+        "returnType": {
+          "displayName": [
+            "Vec"
+          ],
+          "type": 17
+        },
+        "selector": "0x8a5aebe6"
       }
     ]
   },
@@ -1030,6 +1056,21 @@
       "path": [
         "Option"
       ]
+    },
+    {
+      "def": {
+        "sequence": {
+          "type": 18
+        }
+      }
+    },
+    {
+      "def": {
+        "tuple": [
+          2,
+          1
+        ]
+      }
     }
   ]
 }

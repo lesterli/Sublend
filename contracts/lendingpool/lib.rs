@@ -3,15 +3,14 @@
 mod types;
 
 use ink_lang as ink;
-use ink_log::CustomEnvironment;
 
-#[ink::contract(env = crate::CustomEnvironment)]
+#[ink::contract]
 mod lendingpool {
     use crate::types::*;
     use ierc20::IERC20;
-    use ink_log::info;
 
     use ink_env::call::FromAccountId;
+    use ink_prelude::{vec, vec::Vec};
     use ink_storage::collections::HashMap as StorageHashMap;
 
     /// * @dev Emitted on deposit()
@@ -239,10 +238,6 @@ mod lendingpool {
                 VL_NOT_ENOUGH_AVAILABLE_USER_BALANCE
             );
 
-            info!(
-                "[LendingPool|withdraw] amount: {}, interest: {}",
-                amount, reserve_data.cumulated_liquidity_interest
-            );
             if amount <= reserve_data.cumulated_liquidity_interest {
                 reserve_data.cumulated_liquidity_interest -= amount;
             } else {
@@ -422,6 +417,17 @@ mod lendingpool {
                 .get(&(delegator, delegatee))
                 .copied()
                 .unwrap_or(0u128)
+        }
+
+        #[ink(message)]
+        pub fn delegate_of(&self, delegatee: AccountId) -> Vec<(AccountId, Balance)> {
+            let mut delegates = vec![];
+            for v in self.delegate_allowance.iter() {
+                if v.0 .1 == delegatee {
+                    delegates.push((v.0 .0, *v.1))
+                }
+            }
+            delegates
         }
     }
 }
